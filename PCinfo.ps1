@@ -19,6 +19,19 @@ function Get-MemoryType {
     }
 }
 
+# Задает текст в поле значения и подгоняет высоту под фактическое число строк
+# (TextBox, в отличие от Label, не умеет авторазмер по многострочному тексту)
+function Set-ValueBoxText {
+    param (
+        [System.Windows.Forms.TextBox]$TextBox,
+        [string]$Text
+    )
+    $TextBox.Text = $Text
+    $proposedSize = New-Object System.Drawing.Size($TextBox.Width, [int]::MaxValue)
+    $measured = [System.Windows.Forms.TextRenderer]::MeasureText($TextBox.Text, $TextBox.Font, $proposedSize, [System.Windows.Forms.TextFormatFlags]::WordBreak)
+    $TextBox.Height = $measured.Height + 4
+}
+
 # Функция для создания основного окна
 function Show-MainForm {
     param (
@@ -64,7 +77,11 @@ $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textB
     # Панель для скроллинга таблицы (поля ввода и кнопка остаются статичными)
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Location = New-Object System.Drawing.Point(0, 130)
-    $panel.Size = New-Object System.Drawing.Size(650, 380)
+    # Высота считается от фактической клиентской области формы, а не фиксированным числом:
+    # при жестко заданных 380px панель на некоторых системах выходила за нижний край окна
+    # (высота заголовка окна варьируется), из-за чего последняя строка таблицы обрезалась
+    $panel.Size = New-Object System.Drawing.Size(650, ($form.ClientSize.Height - $panel.Location.Y))
+    $panel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $panel.AutoScroll = $true
 
     # Таблица с динамической компоновкой
@@ -73,10 +90,28 @@ $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textB
     $table.RowCount = 0
     $table.AutoSize = $true
     $table.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
-    $table.Dock = [System.Windows.Forms.DockStyle]::Top
-    $table.Padding = New-Object System.Windows.Forms.Padding(10)
+    # Anchor вместо Dock=Top: ширина подстраивается под панель, высота — под контент,
+    # без этого сочетание Dock+AutoSize вызывало паразитный горизонтальный скроллбар,
+    # который перекрывал нижнюю часть последней строки
+    $table.Location = New-Object System.Drawing.Point(0, 0)
+    $table.Width = $panel.ClientSize.Width
+    $table.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+    $table.Padding = New-Object System.Windows.Forms.Padding(10, 10, 10, 20)
     [void]$table.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 35)))
     [void]$table.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 75)))
+
+    # TextBox по умолчанию перехватывает прокрутку колесом мыши на себя и не пропускает
+    # событие дальше, из-за чего скролл прокрутки в панели переставал работать над полями
+    # значений. Здесь вручную прокручиваем панель и гасим встроенную обработку TextBox.
+    $panelScrollHandler = {
+        param($sender, $e)
+        if ($e -is [System.Windows.Forms.HandledMouseEventArgs]) {
+            $e.Handled = $true
+        }
+        $currentY = -$panel.AutoScrollPosition.Y
+        $newY = [Math]::Max(0, $currentY - $e.Delta)
+        $panel.AutoScrollPosition = New-Object System.Drawing.Point(0, $newY)
+    }.GetNewClosure()
 
     $valueLabelMap = @{}
     $fields = @("Имя ПК", "Версия ОС", "Процессор", "Оперативная память", "Установленные диски", "Видеокарта", "ПК без перезагрузки")
@@ -85,11 +120,18 @@ $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textB
         $label.Text = "${field}:"
         $label.AutoSize = $false
         $label.Dock = [System.Windows.Forms.DockStyle]::Fill
-        $label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-        $valueLabel = New-Object System.Windows.Forms.Label
-        $valueLabel.Text = ""
-        $valueLabel.AutoSize = $true
-        $valueLabel.MaximumSize = New-Object System.Drawing.Size(500, 0)  # Перенос строк
+        $label.TextAlign = [System.Drawing.ContentAlignment]::TopLeft
+
+        # TextBox вместо Label — чтобы значение можно было выделить и скопировать
+        $valueLabel = New-Object System.Windows.Forms.TextBox
+        $valueLabel.Multiline = $true
+        $valueLabel.ReadOnly = $true
+        $valueLabel.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+        $valueLabel.BackColor = [System.Drawing.SystemColors]::Control
+        $valueLabel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
+        $valueLabel.Width = 480
+        Set-ValueBoxText -TextBox $valueLabel -Text ""
+        $valueLabel.Add_MouseWheel($panelScrollHandler)
         [void]($rowIdx = $table.RowCount)
 
         $table.Controls.Add($label, 0, $rowIdx)
@@ -122,21 +164,27 @@ $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textB
                 # Время без перезагрузки (LastBootUpTime уже приходит как DateTime через CIM)
                 $uptime = (Get-Date) - $osInfo.LastBootUpTime
 
-                # Обновляем метки
-                $null = $valueLabelMap["Имя ПК"].Text = $osInfo.CSName
-                $null = $valueLabelMap["Версия ОС"].Text = $osInfo.Caption
-                $null = $valueLabelMap["Процессор"].Text = $cpuInfo.Name
-                $null = $valueLabelMap["Оперативная память"].Text = ($memoryInfo | ForEach-Object { "$([math]::Round($_.Capacity / 1GB, 1)) GB $(Get-MemoryType $_.SMBIOSMemoryType)" }) -join ", "
-                $null = $valueLabelMap["Установленные диски"].Text = ($diskInfo | ForEach-Object { "$($_.Model) ($([math]::Round($_.Size / 1GB, 1)) GB)" }) -join ", "
+                # Обновляем поля
+                Set-ValueBoxText -TextBox $valueLabelMap["Имя ПК"] -Text $osInfo.CSName
+                Set-ValueBoxText -TextBox $valueLabelMap["Версия ОС"] -Text $osInfo.Caption
+                Set-ValueBoxText -TextBox $valueLabelMap["Процессор"] -Text $cpuInfo.Name
+                Set-ValueBoxText -TextBox $valueLabelMap["Оперативная память"] -Text (($memoryInfo | ForEach-Object { "$([math]::Round($_.Capacity / 1GB, 1)) GB $(Get-MemoryType $_.SMBIOSMemoryType)" }) -join "`r`n")
+                Set-ValueBoxText -TextBox $valueLabelMap["Установленные диски"] -Text (($diskInfo | ForEach-Object { "$($_.Model) ($([math]::Round($_.Size / 1GB, 1)) GB)" }) -join "`r`n")
 
                 # Проверяем наличие внешней видеокарты (PCI)
                 $externalVideo = $videoInfo | Where-Object { $_.PNPDeviceID -like "*PCI*" }
                 if ($externalVideo) {
-                    $null = $valueLabelMap["Видеокарта"].Text = ($externalVideo | ForEach-Object { $_.Name }) -join ", "
+                    Set-ValueBoxText -TextBox $valueLabelMap["Видеокарта"] -Text (($externalVideo | ForEach-Object { $_.Name }) -join "`r`n")
                 } else {
-                    $null = $valueLabelMap["Видеокарта"].Text = "Внешняя видеокарта не обнаружена"
+                    Set-ValueBoxText -TextBox $valueLabelMap["Видеокарта"] -Text "Внешняя видеокарта не обнаружена"
                 }
-                $null = $valueLabelMap["ПК без перезагрузки"].Text = "{0} дней, {1} часов, {2} минут" -f $uptime.Days, $uptime.Hours, $uptime.Minutes
+                Set-ValueBoxText -TextBox $valueLabelMap["ПК без перезагрузки"] -Text ("{0} дней, {1} часов, {2} минут" -f $uptime.Days, $uptime.Hours, $uptime.Minutes)
+
+                # Пересчитываем область прокрутки панели под фактическую высоту таблицы
+                # (после смены текста лейблы могут перенестись на несколько строк,
+                # и Panel.AutoScroll не подхватывает новую высоту без принудительного пересчета)
+                $table.PerformLayout()
+                $panel.AutoScrollMinSize = New-Object System.Drawing.Size(0, $table.PreferredSize.Height)
             } catch {
                 [void][System.Windows.Forms.MessageBox]::Show("Ошибка: Не удалось получить данные.`n$($_.Exception.Message)", "Ошибка", "OK", "Error")
             } finally {
@@ -154,12 +202,18 @@ $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textB
 }
 
 # Запрос учетных данных администратора
+# Допустимые форматы учетной записи: domain\username или username@domain.ru (UPN)
+$usernamePattern = '^([^\\@\s]+\\[^\\@\s]+|[^\\@\s]+@[^\\@\s]+\.[^\\@\s]+)$'
 $credential = $null
 while (-not $credential) {
-    $credential = Get-Credential -Message "Введите учетные данные администратора домена"
+    $credential = Get-Credential -Message "Введите учетные данные администратора домена (формат: domain\username или username@domain.ru)"
     if (-not $credential) {
         # Пользователь отменил ввод – завершаем программу
         exit
+    }
+    if ($credential.UserName -notmatch $usernamePattern) {
+        [void][System.Windows.Forms.MessageBox]::Show("Учетная запись должна быть указана в формате domain\username или username@domain.ru", "Ошибка", "OK", "Error")
+        $credential = $null
     }
 }
 
