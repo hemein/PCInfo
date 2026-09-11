@@ -49,30 +49,58 @@ function Show-MainForm {
     $form.FormBorderStyle = "FixedSingle"
     $form.MaximizeBox = $false
 
+    # Цветовая палитра
+    $colorBg = [System.Drawing.Color]::White
+    $colorAccent = [System.Drawing.Color]::FromArgb(43, 108, 237)
+    $colorAccentHover = [System.Drawing.Color]::FromArgb(29, 89, 209)
+    $colorCaption = [System.Drawing.Color]::FromArgb(60, 64, 67)
+    $colorValueText = [System.Drawing.Color]::FromArgb(32, 33, 36)
+    $colorDivider = [System.Drawing.Color]::FromArgb(224, 224, 224)
+    $form.BackColor = $colorBg
+
     # Поле для ввода имени компьютера
 $labelHostname = New-Object System.Windows.Forms.Label
 $labelHostname.Text = "Введите имя компьютера или IP:"
 $labelHostname.AutoSize = $false
 $labelHostname.Size = New-Object System.Drawing.Size(300,20)
 $labelHostname.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$labelHostname.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$labelHostname.ForeColor = $colorCaption
 # Центрируем метку по ширине формы (650)
 $labelHostname.Location = New-Object System.Drawing.Point(([int]((650 - $labelHostname.Width)/2)),20)
 
 $textBoxHostname = New-Object System.Windows.Forms.TextBox
 $textBoxHostname.Size = New-Object System.Drawing.Size(200,20)
+$textBoxHostname.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 # Располагаем текстовое поле под меткой, тоже по центру
 $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textBoxHostname.Width)/2)),45)
 
     # Кнопка "Отправить"
     $button = New-Object System.Windows.Forms.Button
     $button.Text = "Отправить"
-    $button.Size = New-Object System.Drawing.Size(100, 30)
-    $button.Location = New-Object System.Drawing.Point(275,75)
+    $button.Size = New-Object System.Drawing.Size(120, 32)
+    $button.Location = New-Object System.Drawing.Point(265,75)
+    $button.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $button.FlatAppearance.BorderSize = 0
+    $button.BackColor = $colorAccent
+    $button.ForeColor = [System.Drawing.Color]::White
+    $button.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $button.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $button.Add_MouseEnter({ $button.BackColor = $colorAccentHover })
+    $button.Add_MouseLeave({ $button.BackColor = $colorAccent })
+
+    # Тонкая разделительная линия между полем ввода и результатами
+    $divider = New-Object System.Windows.Forms.Panel
+    $divider.Location = New-Object System.Drawing.Point(0, 118)
+    $divider.Size = New-Object System.Drawing.Size(650, 1)
+    $divider.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+    $divider.BackColor = $colorDivider
 
     # Добавляем элементы на форму
     [void]$form.Controls.Add($labelHostname)
     [void]$form.Controls.Add($textBoxHostname)
     [void]$form.Controls.Add($button)
+    [void]$form.Controls.Add($divider)
 
     # Панель для скроллинга таблицы (поля ввода и кнопка остаются статичными)
     $panel = New-Object System.Windows.Forms.Panel
@@ -83,6 +111,7 @@ $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textB
     $panel.Size = New-Object System.Drawing.Size(650, ($form.ClientSize.Height - $panel.Location.Y))
     $panel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $panel.AutoScroll = $true
+    $panel.BackColor = $colorBg
 
     # Таблица с динамической компоновкой
     $table = New-Object System.Windows.Forms.TableLayoutPanel
@@ -97,6 +126,7 @@ $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textB
     $table.Width = $panel.ClientSize.Width
     $table.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $table.Padding = New-Object System.Windows.Forms.Padding(10, 10, 10, 20)
+    $table.BackColor = $colorBg
     [void]$table.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 35)))
     [void]$table.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 75)))
 
@@ -121,13 +151,16 @@ $textBoxHostname.Location = New-Object System.Drawing.Point(([int]((650 - $textB
         $label.AutoSize = $false
         $label.Dock = [System.Windows.Forms.DockStyle]::Fill
         $label.TextAlign = [System.Drawing.ContentAlignment]::TopLeft
+        $label.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+        $label.ForeColor = $colorCaption
 
         # TextBox вместо Label — чтобы значение можно было выделить и скопировать
         $valueLabel = New-Object System.Windows.Forms.TextBox
         $valueLabel.Multiline = $true
         $valueLabel.ReadOnly = $true
         $valueLabel.BorderStyle = [System.Windows.Forms.BorderStyle]::None
-        $valueLabel.BackColor = [System.Drawing.SystemColors]::Control
+        $valueLabel.BackColor = $colorBg
+        $valueLabel.ForeColor = $colorValueText
         $valueLabel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
         $valueLabel.Width = 480
         Set-ValueBoxText -TextBox $valueLabel -Text ""
