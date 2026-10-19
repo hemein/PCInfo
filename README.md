@@ -9,6 +9,8 @@ Windows-приложение с графическим интерфейсом д
 - Информация собирается через CIM/WMI (совместимо с Windows PowerShell 5.1 и PowerShell 7+)
 - Значения полей можно выделять и копировать
 - Оперативная память и диски выводятся построчно — по одному модулю/диску на строку
+- Светлая и тёмная темы: переключатель в правом верхнем углу, выбор запоминается между запусками (хранится в `%APPDATA%\PCInfo\settings.json`, пароль не сохраняется)
+- Окно сразу становится активным после ввода учётных данных
 
 ## Требования
 
@@ -34,14 +36,17 @@ Windows-приложение с графическим интерфейсом д
 
 ```powershell
 Install-Module ps2exe -Scope CurrentUser
-Invoke-ps2exe -inputFile .\PCinfo.ps1 -outputFile .\PCinfo.exe -noConsole -STA -title "Информация о ПК" -product "PCInfo"
+Invoke-ps2exe -inputFile .\PCinfo.ps1 -outputFile .\PCinfo.exe -iconFile .\PCinfo.ico -noConsole -STA -title "Информация о ПК" -product "PCInfo"
 ```
+
+`PCinfo.ico` — иконка exe-файла. Иконка окна рисуется самим скриптом (функция `New-AppBitmap`), поэтому при запуске `.ps1` она тоже отображается.
 
 `PCinfo.exe` не хранится в репозитории (см. `.gitignore`) — актуальная сборка публикуется в [Releases](https://github.com/hemein/PCInfo/releases).
 
 ## Структура проекта
 
 - `PCinfo.ps1` — исходный код приложения
+- `PCinfo.ico` — иконка приложения для сборки exe
 - `PCinfo.exe` — скомпилированная версия (не в Git, публикуется в Releases)
 - `CLAUDE.md` — внутренние инструкции для работы с проектом через Claude Code (не в Git)
 
